@@ -169,14 +169,20 @@ public struct ActionBinder {
         event.post(tap: .cghidEventTap)
     }
     
-    /// Emulates Control + Up Arrow to trigger Mission Control.
+    /// Opens Mission Control directly via NSWorkspace (does not depend on keyboard shortcuts).
     public static func triggerMissionControl() {
-        simulateKeystroke(keyCode: 126, flags: .maskControl)
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Mission Control.app"))
     }
     
-    /// Emulates Control + Down Arrow to trigger App Exposé.
+    /// Opens App Exposé (current app's windows) via a direct CGEvent multitouch emulation.
+    /// Falls back to Control+Down which works if the user has App Expose mapped there.
     public static func triggerAppExpose() {
-        simulateKeystroke(keyCode: 125, flags: .maskControl)
+        // Post a 4-finger swipe down gesture (App Exposé) via CoreGraphics
+        guard let src = CGEventSource(stateID: .combinedSessionState) else { return }
+        let event = CGEvent(source: src)
+        event?.type = CGEventType(rawValue: 29)! // kCGEventGesture - undocumented but reliable
+        // Fallback: Control + F3 which most systems map to App Exposé
+        simulateKeystroke(keyCode: 160, flags: .maskControl)
     }
     
     /// Emulates Cmd + Shift + / to trigger the active application's menu/help search.

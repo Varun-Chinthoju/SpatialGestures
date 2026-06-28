@@ -72,8 +72,14 @@ public class GestureProcessor {
         var smoothDeltaX: Float = 0.0
         var smoothDeltaY: Float = 0.0
         
-        // Circular scrolling angle
+        // Circular scrolling angle (2-finger scroll)
         var lastScrollAngle: Float? = nil
+        
+        // Circular swipe angle (3-finger Mission Control / Exposé) - kept separate from scroll
+        var swipeAngle: Float? = nil
+        
+        // Accumulated rotation for 3-finger circular swipe
+        var swipeAccumulator: Float = 0.0
         
         func reset() {
             historyX.removeAll()
@@ -87,6 +93,8 @@ public class GestureProcessor {
             smoothDeltaX = 0.0
             smoothDeltaY = 0.0
             lastScrollAngle = nil
+            swipeAngle = nil
+            swipeAccumulator = 0.0
         }
     }
     
@@ -203,44 +211,65 @@ public class GestureProcessor {
         // Left Click: Index is pinched with the thumb, but Middle is NOT pinched
         let isLeftClick = d1 < 0.12 && !isRightClick
         
-        // 1. Check for 3-finger swipe up/down (Mission Control / App Exposé)
+        // 1. Check for 3-finger circular swipe (Mission Control / App Exposé)
+        // Extend index, middle, ring — rotate around wrist pivot like an iPod wheel.
+        // Counterclockwise = Mission Control (up). Clockwise = App Exposé (down).
         let threeFingersExtended = indexLen > 0.38 && middleLen > 0.38 && ringLen > 0.38 && littleLen < 0.32
         
         if threeFingersExtended {
             state.lastIndexX = nil
             state.lastIndexY = nil
-            state.lastScrollAngle = nil
             
-            guard state.historyY.count >= 5 else { return true }
-            let currentY = state.historyY.last!
-            let previousY = state.historyY[state.historyY.count - 5]
-            let deltaY = currentY - previousY
+            let wrist = points[0]
+            let indexTip = points[8]
+            let dx = indexTip.x - wrist.x
+            let dy = indexTip.y - wrist.y
+            let currentAngle = atan2(dy, dx)
             
-            let now = Date()
-            guard now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 else { return true }
-            
-            if deltaY > 0.10 {
-                print("[Trackpad] 3-finger swipe UP: Mission Control")
-                ActionBinder.triggerMissionControl()
-                state.spaceSwitchCooldown = now
-                DispatchQueue.main.async {
-                    HandTracker.shared.activeGestureName = "Mission Control"
+            if let lastAngle = state.swipeAngle {
+                var diff = currentAngle - lastAngle
+                // Handle wrap-around at -pi/pi boundary
+                if diff > Float.pi  { diff -= 2.0 * Float.pi }
+                if diff < -Float.pi { diff += 2.0 * Float.pi }
+                
+                // Accumulate rotation until threshold is crossed to fire action
+                state.swipeAccumulator += diff
+                state.swipeAngle = currentAngle
+                
+                let now = Date()
+                let rotationThreshold: Float = 0.45  // ~26 degrees of rotation to trigger
+                guard now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 else { return true }
+                
+                if state.swipeAccumulator > rotationThreshold {
+                    print("[Trackpad] 3-finger circle CCW: Mission Control")
+                    ActionBinder.triggerMissionControl()
+                    state.spaceSwitchCooldown = now
+                    state.swipeAccumulator = 0
+                    DispatchQueue.main.async {
+                        HandTracker.shared.activeGestureName = "Mission Control"
+                    }
+                } else if state.swipeAccumulator < -rotationThreshold {
+                    print("[Trackpad] 3-finger circle CW: App Exposé")
+                    ActionBinder.triggerAppExpose()
+                    state.spaceSwitchCooldown = now
+                    state.swipeAccumulator = 0
+                    DispatchQueue.main.async {
+                        HandTracker.shared.activeGestureName = "App Exposé"
+                    }
                 }
-                return true
-            } else if deltaY < -0.10 {
-                print("[Trackpad] 3-finger swipe DOWN: App Exposé")
-                ActionBinder.triggerAppExpose()
-                state.spaceSwitchCooldown = now
-                DispatchQueue.main.async {
-                    HandTracker.shared.activeGestureName = "App Exposé"
-                }
-                return true
+            } else {
+                state.swipeAngle = currentAngle
+                state.swipeAccumulator = 0
             }
             
             DispatchQueue.main.async {
-                HandTracker.shared.activeGestureName = "Trackpad Swipe Mode"
+                HandTracker.shared.activeGestureName = "Swipe Mode (Circle)"
             }
-            return true // Pause cursor movement while holding a 3-finger pose
+            return true // Pause cursor movement while holding 3-finger pose
+        } else {
+            // Reset accumulator and angle when fingers leave the 3-finger pose
+            state.swipeAngle = nil
+            state.swipeAccumulator = 0
         }
         
         // 2. Check for 2-finger circular pivot scroll (Index & Middle open, Ring & Little curled)

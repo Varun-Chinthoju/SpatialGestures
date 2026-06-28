@@ -34,24 +34,46 @@ public class HUDWindowController: NSWindowController {
         
         super.init(window: window)
         
-        // Position window at the bottom center of the primary screen
-        positionWindowAtBottom()
+        // Position window dead-center of the target screen on launch
+        repositionToTargetScreen()
+        
+        // Re-center whenever monitors are plugged, unplugged, or rearranged
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screensDidChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    private func positionWindowAtBottom() {
-        guard let window = window, let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func screensDidChange() {
+        repositionToTargetScreen()
+    }
+    
+    /// Moves the HUD window to the center-X, near-bottom of whichever screen is selected in Settings.
+    /// Vertically positioned with a 1/14 screen-height cushion from the bottom edge.
+    public func repositionToTargetScreen() {
+        guard let window = window else { return }
+        let screen = SettingsManager.shared.targetScreen
+        let screenFrame = screen.frame
         let windowSize = window.frame.size
         
         let x = screenFrame.origin.x + (screenFrame.size.width - windowSize.width) / 2
-        let y = screenFrame.origin.y + 30 // Sits 30pt above the bottom dock area
+        // 1/14 cushion from the bottom: bottom edge of window sits 1/14 of screen height up
+        let y = screenFrame.origin.y + screenFrame.size.height / 14.0
         
         window.setFrameOrigin(NSPoint(x: x, y: y))
+        print("[HUD] Repositioned to '\(screen.localizedName)' at (\(Int(x)), \(Int(y)))")
     }
+
     
     /// Displays the overlay window.
     public func show() {
@@ -63,6 +85,7 @@ public class HUDWindowController: NSWindowController {
         window?.orderOut(nil)
     }
 }
+
 
 /// SwiftUI wrapper for the HUD Overlay layout.
 struct HUDWindowContentView: View {

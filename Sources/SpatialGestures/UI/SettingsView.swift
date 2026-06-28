@@ -89,6 +89,16 @@ public class SettingsManager: ObservableObject {
     @Published var trackpadHand: String = "Left"
     @Published var trackpadSpeed: Double = 1.0
     
+    // Multi-monitor: which screen the HUD lives on (stored as localizedName)
+    @Published var hudScreen: String = NSScreen.main?.localizedName ?? ""
+    
+    /// Returns the NSScreen that should host the HUD, falling back to main.
+    public var targetScreen: NSScreen {
+        return NSScreen.screens.first { $0.localizedName == hudScreen }
+            ?? NSScreen.main
+            ?? NSScreen.screens[0]
+    }
+    
     public var hotkeyModifiers: NSEvent.ModifierFlags {
         return NSEvent.ModifierFlags(rawValue: hotkeyModifiersRaw)
     }
@@ -192,6 +202,7 @@ public class SettingsManager: ObservableObject {
             let enableTrackpad: Bool
             let trackpadHand: String
             let trackpadSpeed: Double
+            let hudScreen: String
         }
         
         let payload = SettingsPayload(
@@ -215,7 +226,8 @@ public class SettingsManager: ObservableObject {
             elevationThreshold: elevationThreshold,
             enableTrackpad: enableTrackpad,
             trackpadHand: trackpadHand,
-            trackpadSpeed: trackpadSpeed
+            trackpadSpeed: trackpadSpeed,
+            hudScreen: hudScreen
         )
         
         do {
@@ -255,6 +267,7 @@ public class SettingsManager: ObservableObject {
                 let enableTrackpad: Bool?
                 let trackpadHand: String?
                 let trackpadSpeed: Double?
+                let hudScreen: String?
             }
             
             let payload = try decoder.decode(SettingsPayload.self, from: data)
@@ -281,6 +294,7 @@ public class SettingsManager: ObservableObject {
             self.enableTrackpad = payload.enableTrackpad ?? false
             self.trackpadHand = payload.trackpadHand ?? "Left"
             self.trackpadSpeed = payload.trackpadSpeed ?? 1.0
+            self.hudScreen = payload.hudScreen ?? (NSScreen.main?.localizedName ?? "")
         } catch {
             print("Failed to load settings: \(error)")
         }
@@ -497,12 +511,17 @@ struct GeneralSettingsView: View {
                         .font(.headline)
                         .foregroundColor(.secondary)
                     
-                    VStack(spacing: 0) {
+                    VStack(spacing: 12) {
+                        // Live screen diagram
+                        MonitorDiagramView()
+                        
+                        Divider()
+                        
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("External Monitor Position")
                                     .font(.body)
-                                Text("Specifies where your external monitor is physically placed relative to your laptop.")
+                                Text("Where the external monitor sits relative to your laptop.")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -516,7 +535,35 @@ struct GeneralSettingsView: View {
                             .frame(width: 160)
                             .onChange(of: settings.monitorLocation) { _ in settings.saveSettings() }
                         }
-                        .padding(12)
+                        .padding(.horizontal, 12)
+                        
+                        Divider()
+                        
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("HUD Display Screen")
+                                    .font(.body)
+                                Text("Which screen the gesture HUD overlay appears on.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Picker("", selection: $settings.hudScreen) {
+                                ForEach(NSScreen.screens, id: \.localizedName) { screen in
+                                    let isMain = (screen == NSScreen.main)
+                                    Text(screen.localizedName + (isMain ? " (Main)" : ""))
+                                        .tag(screen.localizedName)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 200)
+                            .onChange(of: settings.hudScreen) { _ in
+                                settings.saveSettings()
+                                HUDWindowController.shared.repositionToTargetScreen()
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
                     }
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(10)
@@ -542,6 +589,28 @@ struct GeneralSettingsView: View {
                                 .bold()
                         }
                         .padding(12)
+                        
+                        Divider().padding(.horizontal, 12)
+                        
+                        HStack {
+                            Label("Accessibility (Global Hotkey)", systemImage: "keyboard")
+                                .font(.body)
+                            Spacer()
+                            if AXIsProcessTrusted() {
+                                Text("Granted")
+                                    .foregroundColor(.green)
+                                    .bold()
+                            } else {
+                                Button("Grant in System Settings") {
+                                    let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+                                    NSWorkspace.shared.open(url)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .tint(.orange)
+                            }
+                        }
+                        .padding(12)
                     }
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(10)
@@ -550,6 +619,7 @@ struct GeneralSettingsView: View {
                             .stroke(Color.gray.opacity(0.15), lineWidth: 1)
                     )
                 }
+
             }
             .padding(24)
         }
@@ -1487,3 +1557,132 @@ struct EditGestureView: View {
         isPresented = false
     }
 }
+
+// MARK: - Live Monitor Diagram
+
+/// Visual diagram showing all connected NSScreens laid out relative to each other,
+/// with the HUD target screen highlighted.
+struct MonitorDiagramView: View {
+    @ObservedObject var settings = SettingsManager.shared
+    
+    // Refresh when screens change (plug/unplug)
+    @State private var screens: [NSScreen] = NSScreen.screens
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "display.2")
+                    .foregroundColor(.secondary)
+                Text("Connected Displays")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(screens.count) screen\(screens.count == 1 ? "" : "s") detected")
+                    .font(.caption)
+                    .foregroundColor(screens.count > 1 ? .green : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(screens.count > 1 ? Color.green.opacity(0.12) : Color.gray.opacity(0.1))
+                    .cornerRadius(6)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            
+            // Draw a miniature layout of all screens using their actual frame positions
+            GeometryReader { geo in
+                let diagramPadding: CGFloat = 16
+                let availableW = geo.size.width - diagramPadding * 2
+                let availableH = geo.size.height - diagramPadding * 2
+                
+                // Compute the union bounding rect of all screens
+                let allFrames = screens.map { $0.frame }
+                let minX = allFrames.map { $0.minX }.min() ?? 0
+                let minY = allFrames.map { $0.minY }.min() ?? 0
+                let maxX = allFrames.map { $0.maxX }.max() ?? 1
+                let maxY = allFrames.map { $0.maxY }.max() ?? 1
+                let totalW = maxX - minX
+                let totalH = maxY - minY
+                
+                let scaleX = availableW / totalW
+                let scaleY = availableH / totalH
+                let scale = min(scaleX, scaleY) * 0.85
+                
+                // Center the whole layout
+                let layoutW = totalW * scale
+                let layoutH = totalH * scale
+                let offsetX = diagramPadding + (availableW - layoutW) / 2
+                let offsetY = diagramPadding + (availableH - layoutH) / 2
+                
+                ZStack {
+                    ForEach(screens, id: \.localizedName) { screen in
+                        let f = screen.frame
+                        let isMain = (screen == NSScreen.main)
+                        let isHUDTarget = (screen.localizedName == settings.hudScreen) ||
+                                         (settings.hudScreen == "Main" && isMain)
+                        
+                        let x = (f.minX - minX) * scale + offsetX
+                        // NSScreen Y is bottom-up, flip for screen coords
+                        let y = (maxY - f.maxY) * scale + offsetY
+                        let w = f.width * scale
+                        let h = f.height * scale
+                        
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(isHUDTarget
+                                    ? Color.cyan.opacity(0.18)
+                                    : Color(NSColor.controlBackgroundColor).opacity(0.8))
+                            
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(isHUDTarget ? Color.cyan : Color.gray.opacity(0.4),
+                                        lineWidth: isHUDTarget ? 2 : 1)
+                            
+                            VStack(spacing: 2) {
+                                if isMain {
+                                    Image(systemName: "laptopcomputer")
+                                        .font(.system(size: min(w, h) * 0.18))
+                                        .foregroundColor(isHUDTarget ? .cyan : .secondary)
+                                } else {
+                                    Image(systemName: "display")
+                                        .font(.system(size: min(w, h) * 0.18))
+                                        .foregroundColor(isHUDTarget ? .cyan : .secondary)
+                                }
+                                
+                                Text(screen.localizedName)
+                                    .font(.system(size: min(w * 0.14, 9)))
+                                    .foregroundColor(isHUDTarget ? .cyan : .primary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                
+                                Text("\(Int(f.width))x\(Int(f.height))")
+                                    .font(.system(size: min(w * 0.11, 8)))
+                                    .foregroundColor(.secondary)
+                                
+                                if isHUDTarget {
+                                    Text("HUD Here")
+                                        .font(.system(size: min(w * 0.11, 7), weight: .bold))
+                                        .foregroundColor(.cyan)
+                                }
+                            }
+                        }
+                        .frame(width: w, height: h)
+                        .position(x: x + w / 2, y: y + h / 2)
+                    }
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+            }
+            .frame(height: 110)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            screens = NSScreen.screens
+            // If currently selected screen disappeared, fall back to main
+            if !screens.contains(where: { $0.localizedName == settings.hudScreen }) {
+                settings.hudScreen = NSScreen.main?.localizedName ?? "Main"
+                settings.saveSettings()
+            }
+            HUDWindowController.shared.repositionToTargetScreen()
+        }
+    }
+}
+

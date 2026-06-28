@@ -31,9 +31,6 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     @Published public var faceYaw: Float? = nil
     @Published public var facePitch: Float? = nil
     
-    /// Normalized face bounding box in camera frame (mirrored X to match hand coordinates).
-    @Published public var faceBoundingBox: CGRect? = nil
-    
     // Timestamp to prevent HUD flickering on transient tracking losses
     private var lastHandSeenDate = Date.distantPast
     
@@ -176,34 +173,20 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         do {
             try requestHandler.perform([handRequest, faceRequest])
             
-            // 1. Process Face — extract yaw, pitch, and bounding box
-            var currentFaceBox: CGRect? = nil
+            // 1. Process Face Gaze angle
             if let face = faceRequest.results?.first {
                 let yaw = face.yaw?.floatValue ?? 0.0
                 let pitch = face.pitch?.floatValue ?? 0.0
                 let yawDegrees = yaw * 180.0 / .pi
                 let pitchDegrees = pitch * 180.0 / .pi
-                
-                // Mirror the face X origin to match the hand coordinate mirror transform
-                let box = face.boundingBox
-                let mirroredFaceBox = CGRect(
-                    x: 1.0 - box.maxX,
-                    y: box.minY,
-                    width: box.width,
-                    height: box.height
-                )
-                currentFaceBox = mirroredFaceBox
-                
                 DispatchQueue.main.async { [weak self] in
                     self?.faceYaw = yawDegrees
                     self?.facePitch = pitchDegrees
-                    self?.faceBoundingBox = mirroredFaceBox
                 }
             } else {
                 DispatchQueue.main.async { [weak self] in
                     self?.faceYaw = nil
                     self?.facePitch = nil
-                    self?.faceBoundingBox = nil
                 }
             }
             
@@ -261,15 +244,6 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             for item in filteredHands {
                 hands.append(item.joints)
                 let isLeft = (item.observation.chirality == .left)
-                
-                // Face-proximity guard: if the hand is near the face zone, suppress gesture processing.
-                // This prevents false triggers when the user scratches their head, touches their face, etc.
-                if let faceBox = currentFaceBox, isHandNearFace(item.joints, faceBox: faceBox) {
-                    let side = isLeft ? "left" : "right"
-                    print("[HandTracker] Hand suppressed - near face region (\(side))")
-                    continue
-                }
-                
                 GestureProcessor.shared.processFrame(item.joints, isLeft: isLeft)
             }
             
@@ -289,29 +263,6 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         }
     }
 
-    /// Returns true if key hand joints (wrist + all fingertips) fall inside an expanded face bounding box.
-    /// The box is expanded by a generous padding factor to catch nearby-face positions.
-    private func isHandNearFace(_ joints: [Point3D], faceBox: CGRect) -> Bool {
-        // Expand the face bounding box by 60% on each side for a safety margin
-        let padding = CGFloat(0.6)
-        let expandedBox = faceBox.insetBy(
-            dx: -faceBox.width  * padding,
-            dy: -faceBox.height * padding
-        )
-        
-        // Check wrist (index 0) and all 5 fingertips (indices 4, 8, 12, 16, 20)
-        let checkIndices = [0, 4, 8, 12, 16, 20]
-        var insideCount = 0
-        for i in checkIndices {
-            let pt = CGPoint(x: CGFloat(joints[i].x), y: CGFloat(joints[i].y))
-            if expandedBox.contains(pt) {
-                insideCount += 1
-            }
-        }
-        // Suppress if more than half of the sampled joints are inside the expanded face zone
-        return insideCount >= 3
-    }
-    
     private func mapHandJoints(from observation: VNHumanHandPoseObservation) throws -> [Point3D] {
         let jointNames: [VNHumanHandPoseObservation.JointName] = [
             .wrist,
