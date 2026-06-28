@@ -31,6 +31,10 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     @Published public var faceYaw: Float? = nil
     @Published public var facePitch: Float? = nil
     
+    // Joint caching to smooth out tracking at the camera borders
+    private var lastLeftHandJoints: [Point3D]? = nil
+    private var lastRightHandJoints: [Point3D]? = nil
+    
     // Timestamp to prevent HUD flickering on transient tracking losses
     private var lastHandSeenDate = Date.distantPast
     
@@ -173,7 +177,7 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         do {
             try requestHandler.perform([handRequest, faceRequest])
             
-            // 1. Process Face Gaze angle
+            // 1. Process Face Gaze angle for monitor switching
             if let face = faceRequest.results?.first {
                 let yaw = face.yaw?.floatValue ?? 0.0
                 let pitch = face.pitch?.floatValue ?? 0.0
@@ -207,14 +211,15 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             var mappedHands: [(joints: [Point3D], size: Float, observation: VNHumanHandPoseObservation)] = []
             
             for observation in handResults {
-                if let joints = try? mapHandJoints(from: observation) {
+                let isLeft = (observation.chirality == .left)
+                if let joints = try? mapHandJoints(from: observation, isLeft: isLeft) {
                     // Calculate size: distance between wrist (points[0]) and middle knuckle (points[9])
                     let wrist = joints[0]
                     let knuckle = joints[9]
                     let size = sqrt(pow(wrist.x - knuckle.x, 2) + pow(wrist.y - knuckle.y, 2))
                     
-                    // Filter out background hands (size < 0.08 is typical for people walking in background)
-                    if size >= 0.08 {
+                    // Filter size: lowered from 0.08 to 0.015 to support 2-3 meters distance tracking
+                    if size >= 0.015 {
                         mappedHands.append((joints, size, observation))
                     }
                 }
@@ -263,7 +268,7 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         }
     }
 
-    private func mapHandJoints(from observation: VNHumanHandPoseObservation) throws -> [Point3D] {
+    private func mapHandJoints(from observation: VNHumanHandPoseObservation, isLeft: Bool) throws -> [Point3D] {
         let jointNames: [VNHumanHandPoseObservation.JointName] = [
             .wrist,
             .thumbCMC, .thumbMP, .thumbIP, .thumbTip,
@@ -274,16 +279,32 @@ public class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         ]
         
         var points: [Point3D] = []
-        for name in jointNames {
+        let lastPoints = isLeft ? lastLeftHandJoints : lastRightHandJoints
+        
+        for (idx, name) in jointNames.enumerated() {
             let jointPoint = try observation.recognizedPoint(name)
-            guard jointPoint.confidence > 0.3 else {
-                throw HandTrackerError.lowConfidence
-            }
             
-            // Mirror X-coordinate for natural visual feedback (front camera mirror effect)
-            let mirroredX = Float(1.0 - jointPoint.location.x)
-            let y = Float(jointPoint.location.y)
-            points.append(Point3D(x: mirroredX, y: y, z: 0.0))
+            // If the camera view cuts off the hand, we can fallback to the last known position
+            // of the low-confidence joints to prevent immediate overall frame dropout.
+            if jointPoint.confidence > 0.15 {
+                let mirroredX = Float(1.0 - jointPoint.location.x)
+                let y = Float(jointPoint.location.y)
+                points.append(Point3D(x: mirroredX, y: y, z: 0.0))
+            } else if let lastP = lastPoints, lastP.count == 21 {
+                points.append(lastP[idx])
+            } else {
+                // Initial fallback when no previous cache is available
+                let mirroredX = Float(1.0 - jointPoint.location.x)
+                let y = Float(jointPoint.location.y)
+                points.append(Point3D(x: mirroredX, y: y, z: 0.0))
+            }
+        }
+        
+        // Cache the valid coordinates of the hand
+        if isLeft {
+            lastLeftHandJoints = points
+        } else {
+            lastRightHandJoints = points
         }
         
         return points

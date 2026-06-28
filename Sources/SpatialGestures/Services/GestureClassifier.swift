@@ -81,6 +81,14 @@ public class GestureProcessor {
         // Accumulated rotation for 3-finger circular swipe
         var swipeAccumulator: Float = 0.0
         
+        // Linear vertical swipe states (3-finger vertical motion)
+        var lastSwipeY: Float? = nil
+        var swipeAccumulatorY: Float = 0.0
+        
+        // Pinch click-vs-drag states
+        var pinchStartCursorLocation: CGPoint? = nil
+        var isDragActive = false
+        
         func reset() {
             historyX.removeAll()
             historyY.removeAll()
@@ -95,6 +103,10 @@ public class GestureProcessor {
             lastScrollAngle = nil
             swipeAngle = nil
             swipeAccumulator = 0.0
+            lastSwipeY = nil
+            swipeAccumulatorY = 0.0
+            pinchStartCursorLocation = nil
+            isDragActive = false
         }
     }
     
@@ -211,16 +223,54 @@ public class GestureProcessor {
         // Left Click: Index is pinched with the thumb, but Middle is NOT pinched
         let isLeftClick = d1 < 0.12 && !isRightClick
         
-        // 1. Check for 3-finger circular swipe (Mission Control / App Exposé)
-        // Extend index, middle, ring — rotate around wrist pivot like an iPod wheel.
-        // Counterclockwise = Mission Control (up). Clockwise = App Exposé (down).
-        let threeFingersExtended = indexLen > 0.38 && middleLen > 0.38 && ringLen > 0.38 && littleLen < 0.32
+        // 1. Check for 3-finger circular or vertical swipe (Mission Control / App Exposé)
+        // Extend index, middle, ring. Allow pinky to be slightly relaxed (anatomical constraint)
+        let threeFingersExtended = indexLen > 0.34 && middleLen > 0.34 && ringLen > 0.34 && (littleLen < ringLen - 0.05 || littleLen < 0.35)
         
         if threeFingersExtended {
             state.lastIndexX = nil
             state.lastIndexY = nil
             
+            // A. Linear Vertical Swipe Detection (swiping hand physically up or down)
             let wrist = points[0]
+            let currentY = wrist.y
+            if let lastY = state.lastSwipeY {
+                let dy = currentY - lastY
+                state.swipeAccumulatorY += dy
+                
+                let now = Date()
+                // Physical screen space vertical distance threshold in camera normalized coordinates
+                let translationThreshold: Float = 0.12
+                
+                if now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 {
+                    if state.swipeAccumulatorY > translationThreshold {
+                        // Hand moved UP in camera coordinates (increase in Y)
+                        print("[Trackpad] 3-finger linear UP: Mission Control")
+                        ActionBinder.triggerMissionControl()
+                        state.spaceSwitchCooldown = now
+                        state.swipeAccumulatorY = 0
+                        state.swipeAccumulator = 0
+                        DispatchQueue.main.async {
+                            HandTracker.shared.activeGestureName = "Mission Control"
+                        }
+                    } else if state.swipeAccumulatorY < -translationThreshold {
+                        // Hand moved DOWN in camera coordinates (decrease in Y)
+                        print("[Trackpad] 3-finger linear DOWN: App Exposé")
+                        ActionBinder.triggerAppExpose()
+                        state.spaceSwitchCooldown = now
+                        state.swipeAccumulatorY = 0
+                        state.swipeAccumulator = 0
+                        DispatchQueue.main.async {
+                            HandTracker.shared.activeGestureName = "App Exposé"
+                        }
+                    }
+                }
+            } else {
+                state.swipeAccumulatorY = 0
+            }
+            state.lastSwipeY = currentY
+            
+            // B. Circular Wheel Swipe Detection (Fallback rotation)
             let indexTip = points[8]
             let dx = indexTip.x - wrist.x
             let dy = indexTip.y - wrist.y
@@ -228,33 +278,33 @@ public class GestureProcessor {
             
             if let lastAngle = state.swipeAngle {
                 var diff = currentAngle - lastAngle
-                // Handle wrap-around at -pi/pi boundary
                 if diff > Float.pi  { diff -= 2.0 * Float.pi }
                 if diff < -Float.pi { diff += 2.0 * Float.pi }
                 
-                // Accumulate rotation until threshold is crossed to fire action
                 state.swipeAccumulator += diff
                 state.swipeAngle = currentAngle
                 
                 let now = Date()
-                let rotationThreshold: Float = 0.45  // ~26 degrees of rotation to trigger
-                guard now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 else { return true }
-                
-                if state.swipeAccumulator > rotationThreshold {
-                    print("[Trackpad] 3-finger circle CCW: Mission Control")
-                    ActionBinder.triggerMissionControl()
-                    state.spaceSwitchCooldown = now
-                    state.swipeAccumulator = 0
-                    DispatchQueue.main.async {
-                        HandTracker.shared.activeGestureName = "Mission Control"
-                    }
-                } else if state.swipeAccumulator < -rotationThreshold {
-                    print("[Trackpad] 3-finger circle CW: App Exposé")
-                    ActionBinder.triggerAppExpose()
-                    state.spaceSwitchCooldown = now
-                    state.swipeAccumulator = 0
-                    DispatchQueue.main.async {
-                        HandTracker.shared.activeGestureName = "App Exposé"
+                let rotationThreshold: Float = 0.45
+                if now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 {
+                    if state.swipeAccumulator > rotationThreshold {
+                        print("[Trackpad] 3-finger circle CCW: Mission Control")
+                        ActionBinder.triggerMissionControl()
+                        state.spaceSwitchCooldown = now
+                        state.swipeAccumulator = 0
+                        state.swipeAccumulatorY = 0
+                        DispatchQueue.main.async {
+                            HandTracker.shared.activeGestureName = "Mission Control"
+                        }
+                    } else if state.swipeAccumulator < -rotationThreshold {
+                        print("[Trackpad] 3-finger circle CW: App Exposé")
+                        ActionBinder.triggerAppExpose()
+                        state.spaceSwitchCooldown = now
+                        state.swipeAccumulator = 0
+                        state.swipeAccumulatorY = 0
+                        DispatchQueue.main.async {
+                            HandTracker.shared.activeGestureName = "App Exposé"
+                        }
                     }
                 }
             } else {
@@ -263,17 +313,19 @@ public class GestureProcessor {
             }
             
             DispatchQueue.main.async {
-                HandTracker.shared.activeGestureName = "Swipe Mode (Circle)"
+                HandTracker.shared.activeGestureName = "Swipe Mode"
             }
             return true // Pause cursor movement while holding 3-finger pose
         } else {
-            // Reset accumulator and angle when fingers leave the 3-finger pose
+            // Reset accumulator and state when fingers leave 3-finger pose
             state.swipeAngle = nil
             state.swipeAccumulator = 0
+            state.lastSwipeY = nil
+            state.swipeAccumulatorY = 0
         }
         
         // 2. Check for 2-finger circular pivot scroll (Index & Middle open, Ring & Little curled)
-        let twoFingersScroll = indexLen > 0.38 && middleLen > 0.38 && ringLen < 0.32 && littleLen < 0.32 && !isLeftClick && !isRightClick
+        let twoFingersScroll = indexLen > 0.35 && middleLen > 0.35 && ringLen < 0.35 && littleLen < 0.35 && !isLeftClick && !isRightClick
         
         if twoFingersScroll {
             state.lastIndexX = nil
@@ -378,14 +430,33 @@ public class GestureProcessor {
                         print("[Trackpad] Left Mouse Down at \(targetPoint)")
                         ActionBinder.mouseDown(at: targetPoint)
                         state.wasPinchingForMouse = true
+                        state.pinchStartCursorLocation = targetPoint
+                        state.isDragActive = false
                     } else {
-                        ActionBinder.moveMouse(to: targetPoint, drag: true)
+                        // Only transition to drag if the user moves past 1/25 of typical screen size (~60 pixels)
+                        if state.isDragActive {
+                            ActionBinder.moveMouse(to: targetPoint, drag: true)
+                        } else if let startLoc = state.pinchStartCursorLocation {
+                            let dx = targetPoint.x - startLoc.x
+                            let dy = targetPoint.y - startLoc.y
+                            let dist = sqrt(dx*dx + dy*dy)
+                            
+                            if dist > 60.0 {
+                                state.isDragActive = true
+                                print("[Trackpad] Drag threshold crossed. Drag started.")
+                                ActionBinder.moveMouse(to: targetPoint, drag: true)
+                            }
+                        }
                     }
                 } else {
                     if state.wasPinchingForMouse {
-                        print("[Trackpad] Left Mouse Up at \(targetPoint)")
-                        ActionBinder.mouseUp(at: targetPoint)
+                        // If they never dragged, release at the original pinch-start position to guarantee a clean click
+                        let releasePoint = state.isDragActive ? targetPoint : (state.pinchStartCursorLocation ?? targetPoint)
+                        print("[Trackpad] Left Mouse Up at \(releasePoint)")
+                        ActionBinder.mouseUp(at: releasePoint)
                         state.wasPinchingForMouse = false
+                        state.pinchStartCursorLocation = nil
+                        state.isDragActive = false
                     } else {
                         // Only move cursor if we are not right clicking or holding right click drag
                         if !isRightClick && !state.wasRightPinching {
@@ -399,7 +470,7 @@ public class GestureProcessor {
                 if isRightClick {
                     actionText = "Trackpad Right Click"
                 } else if isLeftClick {
-                    actionText = "Trackpad Drag Click"
+                    actionText = state.isDragActive ? "Trackpad Drag" : "Trackpad Click"
                 }
                 
                 DispatchQueue.main.async {

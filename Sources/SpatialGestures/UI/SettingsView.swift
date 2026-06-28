@@ -13,11 +13,12 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
         
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 480),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
+        win.minSize = NSSize(width: 820, height: 600)
         
         win.title = "SpatialGestures Settings"
         win.isReleasedWhenClosed = false
@@ -88,6 +89,9 @@ public class SettingsManager: ObservableObject {
     @Published var enableTrackpad: Bool = false
     @Published var trackpadHand: String = "Left"
     @Published var trackpadSpeed: Double = 1.0
+    
+    // Tracking Mode: "Finger" or "Eye"
+    @Published var trackingMode: String = "Finger"
     
     // Multi-monitor: which screen the HUD lives on (stored as localizedName)
     @Published var hudScreen: String = NSScreen.main?.localizedName ?? ""
@@ -203,6 +207,7 @@ public class SettingsManager: ObservableObject {
             let trackpadHand: String
             let trackpadSpeed: Double
             let hudScreen: String
+            let trackingMode: String
         }
         
         let payload = SettingsPayload(
@@ -227,7 +232,8 @@ public class SettingsManager: ObservableObject {
             enableTrackpad: enableTrackpad,
             trackpadHand: trackpadHand,
             trackpadSpeed: trackpadSpeed,
-            hudScreen: hudScreen
+            hudScreen: hudScreen,
+            trackingMode: trackingMode
         )
         
         do {
@@ -268,6 +274,7 @@ public class SettingsManager: ObservableObject {
                 let trackpadHand: String?
                 let trackpadSpeed: Double?
                 let hudScreen: String?
+                let trackingMode: String?
             }
             
             let payload = try decoder.decode(SettingsPayload.self, from: data)
@@ -295,6 +302,7 @@ public class SettingsManager: ObservableObject {
             self.trackpadHand = payload.trackpadHand ?? "Left"
             self.trackpadSpeed = payload.trackpadSpeed ?? 1.0
             self.hudScreen = payload.hudScreen ?? (NSScreen.main?.localizedName ?? "")
+            self.trackingMode = payload.trackingMode ?? "Finger"
         } catch {
             print("Failed to load settings: \(error)")
         }
@@ -356,11 +364,96 @@ public struct SettingsView: View {
                 AboutSettingsView()
             }
         }
-        .frame(width: 680, height: 480)
+        .frame(minWidth: 820, maxWidth: .infinity, minHeight: 600, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Shared Settings Design System
+
+/// Standard card container used by every settings section.
+struct SettingsCard<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1))
+    }
+}
+
+/// Consistent divider between card rows.
+struct CardDivider: View {
+    var body: some View {
+        Divider().padding(.horizontal, 16)
+    }
+}
+
+/// Section heading with an SF Symbol icon and accent color.
+struct SectionHeader: View {
+    let title: String
+    let icon: String
+    var color: Color = .accentColor
+
+    var body: some View {
+        Label(title, systemImage: icon)
+            .font(.system(.subheadline, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.top, 6)
+    }
+}
+
+/// A standard two-column settings row (label left, control right).
+struct SettingsRow<Control: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    @ViewBuilder var control: Control
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body)
+                if let sub = subtitle {
+                    Text(sub).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            control
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+}
+
+/// A slider row with label, live value display, and save-on-change.
+struct SliderRow: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    var format: (Double) -> String = { "\(Int($0))" }
+    var onChanged: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).font(.body)
+                Spacer()
+                Text(format(value))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 38, alignment: .trailing)
+            }
+            Slider(value: $value, in: range, step: step)
+                .tint(.accentColor)
+                .onChange(of: value) { _ in onChanged() }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
     }
 }
 
 struct GeneralSettingsView: View {
+
     @ObservedObject var settings = SettingsManager.shared
     @ObservedObject var tracker = HandTracker.shared
     
@@ -368,264 +461,184 @@ struct GeneralSettingsView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("General Settings")
-                    .font(.title)
-                    .bold()
-                    .padding(.bottom, 10)
-                
-                // Section 1: Activation Shortcut
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Activation")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 0) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Toggle Hotkey")
-                                    .font(.body)
-                                Text("Press this key combination to turn hand tracking on or off.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Button(action: {
-                                isRecordingHotkey = true
-                            }) {
-                                Text(isRecordingHotkey ? "Press keys..." : settings.hotkeyDescription)
-                                    .font(.system(.body, design: .monospaced))
-                                    .bold()
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(isRecordingHotkey ? .orange : .blue)
+            VStack(alignment: .leading, spacing: 24) {
+
+                // ── Activation ─────────────────────────────────────────────────────
+                SectionHeader(title: "Activation", icon: "bolt.fill", color: .blue)
+
+                SettingsCard {
+                    SettingsRow(
+                        title: "Toggle Hotkey",
+                        subtitle: "Key combo to enable or disable hand tracking."
+                    ) {
+                        Button(isRecordingHotkey ? "Press keys…" : settings.hotkeyDescription) {
+                            isRecordingHotkey = true
                         }
-                        .padding(12)
+                        .font(.system(.body, design: .monospaced).bold())
+                        .buttonStyle(.bordered)
+                        .tint(isRecordingHotkey ? .orange : .accentColor)
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
                 }
-                
-                // Section 2: Hand Action Mappings (Left / Right Hand Mappings)
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Hand Action Mappings")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 0) {
-                        HStack {
-                            Text("Left Hand Action")
-                            Spacer()
-                            Picker("", selection: $settings.leftHandAction) {
-                                Text("Screen Brightness").tag("Brightness")
-                                Text("System Volume").tag("Volume")
-                                Text("None").tag("None")
-                            }
-                            .pickerStyle(.menu)
-                            .frame(width: 160)
-                            .onChange(of: settings.leftHandAction) { _ in settings.saveSettings() }
+
+                // ── Hand Mappings ──────────────────────────────────────────────────
+                SectionHeader(title: "Hand Action Mappings", icon: "hand.raised.fill", color: .purple)
+
+                SettingsCard {
+                    SettingsRow(title: "Left Hand") {
+                        Picker("", selection: $settings.leftHandAction) {
+                            Text("Brightness").tag("Brightness")
+                            Text("Volume").tag("Volume")
+                            Text("None").tag("None")
                         }
-                        .padding(12)
-                        
-                        Divider().padding(.horizontal, 12)
-                        
-                        HStack {
-                            Text("Right Hand Action")
-                            Spacer()
-                            Picker("", selection: $settings.rightHandAction) {
-                                Text("System Volume").tag("Volume")
-                                Text("Screen Brightness").tag("Brightness")
-                                Text("None").tag("None")
-                            }
-                            .pickerStyle(.menu)
-                            .frame(width: 160)
-                            .onChange(of: settings.rightHandAction) { _ in settings.saveSettings() }
-                        }
-                        .padding(12)
+                        .pickerStyle(.menu).frame(width: 140)
+                        .onChange(of: settings.leftHandAction) { _ in settings.saveSettings() }
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
-                }
-                
-                // Section 3: Gestures Configuration (Clenched Scroll)
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Gestures Configuration")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 0) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Enable Fist Scrolling")
-                                    .font(.body)
-                                Text("Clench your hand into a fist and drag up/down to scroll.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Toggle("", isOn: $settings.enableScroll)
-                                .toggleStyle(.switch)
-                                .onChange(of: settings.enableScroll) { _ in settings.saveSettings() }
+                    CardDivider()
+                    SettingsRow(title: "Right Hand") {
+                        Picker("", selection: $settings.rightHandAction) {
+                            Text("Volume").tag("Volume")
+                            Text("Brightness").tag("Brightness")
+                            Text("None").tag("None")
                         }
-                        .padding(12)
-                        
-                        if settings.enableScroll {
-                            Divider().padding(.horizontal, 12)
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Scroll Speed")
-                                        .font(.body)
-                                    Spacer()
-                                    Text("\(Int(settings.scrollSensitivity))")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Slider(value: $settings.scrollSensitivity, in: 10.0...80.0, step: 5.0)
-                                    .onChange(of: settings.scrollSensitivity) { _ in
-                                        settings.saveSettings()
-                                    }
+                        .pickerStyle(.menu).frame(width: 140)
+                        .onChange(of: settings.rightHandAction) { _ in settings.saveSettings() }
+                    }
+                    CardDivider()
+                    SettingsRow(
+                        title: "Flat Hand Elevation",
+                        subtitle: "Raise/lower a flat open palm to adjust volume or brightness."
+                    ) {
+                        Toggle("", isOn: $settings.enableFlatHandControl)
+                            .toggleStyle(.switch)
+                            .onChange(of: settings.enableFlatHandControl) { _ in settings.saveSettings() }
+                    }
+                    if settings.enableFlatHandControl {
+                        CardDivider()
+                        SliderRow(
+                            title: "Elevation Sensitivity",
+                            value: $settings.elevationThreshold,
+                            range: 0.02...0.20, step: 0.01,
+                            format: { String(format: "%.2f", $0) },
+                            onChanged: { settings.saveSettings() }
+                        )
+                    }
+                }
+
+                // ── Fist Scroll ────────────────────────────────────────────────────
+                SectionHeader(title: "Fist Scroll", icon: "hand.raised.fingers.spread", color: .teal)
+
+                SettingsCard {
+                    SettingsRow(
+                        title: "Enable Fist Scrolling",
+                        subtitle: "Clench your hand and drag up/down to scroll."
+                    ) {
+                        Toggle("", isOn: $settings.enableScroll)
+                            .toggleStyle(.switch)
+                            .onChange(of: settings.enableScroll) { _ in settings.saveSettings() }
+                    }
+                    if settings.enableScroll {
+                        CardDivider()
+                        SliderRow(
+                            title: "Scroll Speed",
+                            value: $settings.scrollSensitivity,
+                            range: 10...80, step: 5,
+                            onChanged: { settings.saveSettings() }
+                        )
+                    }
+                }
+
+                // ── Monitor Setup ──────────────────────────────────────────────────
+                SectionHeader(title: "Monitor Setup", icon: "display.2", color: .cyan)
+
+                SettingsCard {
+                    MonitorDiagramView()
+                    CardDivider()
+                    SettingsRow(
+                        title: "External Monitor Position",
+                        subtitle: "Where the external monitor sits relative to your laptop."
+                    ) {
+                        Picker("", selection: $settings.monitorLocation) {
+                            Text("None").tag("None")
+                            Text("Left of Laptop").tag("Left")
+                            Text("Right of Laptop").tag("Right")
+                        }
+                        .pickerStyle(.menu).frame(width: 150)
+                        .onChange(of: settings.monitorLocation) { _ in settings.saveSettings() }
+                    }
+                    CardDivider()
+                    SettingsRow(
+                        title: "HUD Display Screen",
+                        subtitle: "Which screen the gesture HUD overlay appears on."
+                    ) {
+                        Picker("", selection: $settings.hudScreen) {
+                            ForEach(NSScreen.screens, id: \.localizedName) { screen in
+                                let isMain = (screen == NSScreen.main)
+                                Text(screen.localizedName + (isMain ? " (Main)" : ""))
+                                    .tag(screen.localizedName)
                             }
-                            .padding(12)
+                        }
+                        .pickerStyle(.menu).frame(width: 190)
+                        .onChange(of: settings.hudScreen) { _ in
+                            settings.saveSettings()
+                            HUDWindowController.shared.repositionToTargetScreen()
                         }
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
                 }
-                
-                // Section 4: Monitor Setup
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Monitor Setup")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 12) {
-                        // Live screen diagram
-                        MonitorDiagramView()
-                        
-                        Divider()
-                        
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("External Monitor Position")
-                                    .font(.body)
-                                Text("Where the external monitor sits relative to your laptop.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+
+                // ── Device Status ──────────────────────────────────────────────────
+                SectionHeader(title: "Device Status", icon: "checkmark.shield.fill", color: .green)
+
+                SettingsCard {
+                    SettingsRow(title: "FaceTime Camera") {
+                        Label(
+                            tracker.cameraAuthorized ? "Connected" : "Access Denied",
+                            systemImage: tracker.cameraAuthorized ? "camera.fill" : "camera.slash.fill"
+                        )
+                        .foregroundStyle(tracker.cameraAuthorized ? .green : .red)
+                        .font(.callout.bold())
+                    }
+                    CardDivider()
+                    SettingsRow(title: "Accessibility (Global Hotkey)") {
+                        if AXIsProcessTrusted() {
+                            Label("Granted", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green).font(.callout.bold())
+                        } else {
+                            Button("Open System Settings") {
+                                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+                                NSWorkspace.shared.open(url)
                             }
-                            Spacer()
-                            Picker("", selection: $settings.monitorLocation) {
-                                Text("None (Single Screen)").tag("None")
-                                Text("Left of Laptop").tag("Left")
-                                Text("Right of Laptop").tag("Right")
-                            }
-                            .pickerStyle(.menu)
-                            .frame(width: 160)
-                            .onChange(of: settings.monitorLocation) { _ in settings.saveSettings() }
+                            .buttonStyle(.borderedProminent).controlSize(.small).tint(.orange)
                         }
-                        .padding(.horizontal, 12)
-                        
-                        Divider()
-                        
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("HUD Display Screen")
-                                    .font(.body)
-                                Text("Which screen the gesture HUD overlay appears on.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Picker("", selection: $settings.hudScreen) {
-                                ForEach(NSScreen.screens, id: \.localizedName) { screen in
-                                    let isMain = (screen == NSScreen.main)
-                                    Text(screen.localizedName + (isMain ? " (Main)" : ""))
-                                        .tag(screen.localizedName)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .frame(width: 200)
-                            .onChange(of: settings.hudScreen) { _ in
+                    }
+                }
+
+                // ── Launch at Login ────────────────────────────────────────────────
+                SectionHeader(title: "System Integration", icon: "power", color: .orange)
+
+                SettingsCard {
+                    SettingsRow(
+                        title: "Launch at Login",
+                        subtitle: "Start SpatialGestures automatically when you turn on your Mac."
+                    ) {
+                        Toggle("", isOn: $settings.launchAtLogin)
+                            .toggleStyle(.switch)
+                            .onChange(of: settings.launchAtLogin) { _ in
                                 settings.saveSettings()
-                                HUDWindowController.shared.repositionToTargetScreen()
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 12)
-                    }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
-                }
-                
-                // Section 5: Camera Status Check
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Device Status")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 0) {
-                        HStack {
-                            Label("FaceTime Camera Access", systemImage: "camera")
-                                .font(.body)
-                            Spacer()
-                            Text(tracker.cameraAuthorized ? "Connected" : "Access Denied")
-                                .foregroundColor(tracker.cameraAuthorized ? .green : .red)
-                                .bold()
-                        }
-                        .padding(12)
-                        
-                        Divider().padding(.horizontal, 12)
-                        
-                        HStack {
-                            Label("Accessibility (Global Hotkey)", systemImage: "keyboard")
-                                .font(.body)
-                            Spacer()
-                            if AXIsProcessTrusted() {
-                                Text("Granted")
-                                    .foregroundColor(.green)
-                                    .bold()
-                            } else {
-                                Button("Grant in System Settings") {
-                                    let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-                                    NSWorkspace.shared.open(url)
+                                if settings.launchAtLogin {
+                                    try? SMAppService.mainApp.register()
+                                } else {
+                                    try? SMAppService.mainApp.unregister()
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .tint(.orange)
                             }
-                        }
-                        .padding(12)
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
                 }
 
             }
             .padding(24)
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("General Settings")
         .onAppear {
-            // Local key interceptor to record global key combinations
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 if isRecordingHotkey {
                     let flags = event.modifierFlags.intersection([.control, .option, .shift, .command])
@@ -644,89 +657,50 @@ struct GeneralSettingsView: View {
 struct AirTrackpadSettingsView: View {
     @ObservedObject var settings = SettingsManager.shared
 
-    
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Air Trackpad")
-                    .font(.title)
-                    .bold()
-                    .padding(.bottom, 10)
-                
-                // Section 1: Control Toggles
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Control")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 0) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Enable Air Trackpad")
-                                    .font(.body)
-                                Text("Control your Mac's mouse cursor with your hand movements in the air.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Toggle("", isOn: $settings.enableTrackpad)
-                                .toggleStyle(.switch)
-                                .onChange(of: settings.enableTrackpad) { _ in settings.saveSettings() }
-                        }
-                        .padding(12)
-                        
-                        if settings.enableTrackpad {
-                            Divider().padding(.horizontal, 12)
-                            
-                            HStack {
-                                Text("Trackpad Hand")
-                                Spacer()
-                                Picker("", selection: $settings.trackpadHand) {
-                                    Text("Left Hand").tag("Left")
-                                    Text("Right Hand").tag("Right")
-                                }
-                                .pickerStyle(.segmented)
-                                .frame(width: 180)
-                                .onChange(of: settings.trackpadHand) { _ in settings.saveSettings() }
-                            }
-                            .padding(12)
-                            
-                            Divider().padding(.horizontal, 12)
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Tracking Speed / Sensitivity")
-                                        .font(.body)
-                                    Spacer()
-                                    Text(String(format: "%.1fx", settings.trackpadSpeed))
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Slider(value: $settings.trackpadSpeed, in: 0.5...2.5, step: 0.1)
-                                    .onChange(of: settings.trackpadSpeed) { _ in settings.saveSettings() }
-                            }
-                            .padding(12)
-                        }
+            VStack(alignment: .leading, spacing: 24) {
+
+                // ── Finger Trackpad Mappings ────────────────────────────────────
+                SectionHeader(title: "Finger Trackpad Settings", icon: "hand.point.up.fill", color: .teal)
+
+                SettingsCard {
+                    SettingsRow(
+                        title: "Enable Air Trackpad",
+                        subtitle: "Control mouse cursor with index finger pointing."
+                    ) {
+                        Toggle("", isOn: $settings.enableTrackpad)
+                            .toggleStyle(.switch)
+                            .onChange(of: settings.enableTrackpad) { _ in settings.saveSettings() }
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
+                    if settings.enableTrackpad {
+                        CardDivider()
+                        SettingsRow(title: "Trackpad Hand") {
+                            Picker("", selection: $settings.trackpadHand) {
+                                Text("Left Hand").tag("Left")
+                                Text("Right Hand").tag("Right")
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 180)
+                            .onChange(of: settings.trackpadHand) { _ in settings.saveSettings() }
+                        }
+                        CardDivider()
+                        SliderRow(
+                            title: "Tracking Speed / Sensitivity",
+                            value: $settings.trackpadSpeed,
+                            range: 0.5...2.5, step: 0.1,
+                            format: { String(format: "%.1fx", $0) },
+                            onChanged: { settings.saveSettings() }
+                        )
+                    }
                 }
-                
+
                 // Section 2: Instructions (with Info symbol)
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.title3)
-                        Text("How to Use")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
-                    
+                    Label("How to Use", systemImage: "info.circle.fill")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "hand.point.up.fill")
@@ -736,14 +710,14 @@ struct AirTrackpadSettingsView: View {
                                 Text("Point to Move")
                                     .font(.body)
                                     .bold()
-                                Text("Point exactly one finger (your index finger extended, other fingers curled) and move it to slide the cursor relative to its position. Pointing-only prevents accidental mouse drift.")
+                                Text("Point exactly one finger (your index finger extended, other fingers curled) and move it to slide the cursor relative to its position.")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                         }
-                        
+
                         Divider()
-                        
+
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "hand.raised.fill")
                                 .foregroundColor(.blue)
@@ -752,14 +726,14 @@ struct AirTrackpadSettingsView: View {
                                 Text("Clutch to Pause (Fist)")
                                     .font(.body)
                                     .bold()
-                                Text("Clench your hand into a fist to temporarily lock the cursor. Move your arm back to center, then reopen your index finger to resume moving the pointer.")
+                                Text("Clench your hand into a fist to temporarily lock the cursor. Move your arm back to center, then reopen your index finger to resume moving.")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                         }
-                        
+
                         Divider()
-                        
+
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "hand.tap.fill")
                                 .foregroundColor(.blue)
@@ -773,9 +747,9 @@ struct AirTrackpadSettingsView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
-                        
+
                         Divider()
-                        
+
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "arrow.up.and.down.text.horizontal")
                                 .foregroundColor(.blue)
@@ -789,9 +763,9 @@ struct AirTrackpadSettingsView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
-                        
+
                         Divider()
-                        
+
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "arrow.up.and.down.and.sparkles")
                                 .foregroundColor(.blue)
@@ -800,9 +774,9 @@ struct AirTrackpadSettingsView: View {
                                 Text("System Swipes (3 Fingers)")
                                     .font(.body)
                                     .bold()
-                                Text("Raise exactly three fingers (index, middle, and ring) and swipe up quickly to open Mission Control, or swipe down quickly to open App Exposé.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                Text("Raise exactly three fingers (index, middle, and ring) and rotate your wrist to trigger Mission Control or App Exposé.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                             }
                         }
                     }
@@ -818,6 +792,7 @@ struct AirTrackpadSettingsView: View {
             .padding(24)
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("Air Trackpad Settings")
     }
 }
 
@@ -909,6 +884,7 @@ struct CustomGesturesView: View {
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("Custom Gestures")
         .sheet(isPresented: $showRecordingWizard) {
             RecordingWizardView(isPresented: $showRecordingWizard)
         }
@@ -926,95 +902,61 @@ struct AppearanceSettingsView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("HUD Appearance")
-                    .font(.title)
-                    .bold()
-                    .padding(.bottom, 10)
-                
-                // Section 1: Themes
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Styling & Theme")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 0) {
-                        HStack {
-                            Text("HUD Theme Color")
-                            Spacer()
-                            Picker("", selection: $settings.hudThemeColor) {
-                                Text("Cyan").tag("Cyan")
-                                Text("Green").tag("Green")
-                                Text("Magenta").tag("Magenta")
-                                Text("Orange").tag("Orange")
-                            }
-                            .pickerStyle(.menu)
-                            .frame(width: 100)
-                            .onChange(of: settings.hudThemeColor) { _ in settings.saveSettings() }
+            VStack(alignment: .leading, spacing: 24) {
+
+                // ── Styling & Theme ───────────────────────────────────────────────
+                SectionHeader(title: "Styling & Theme", icon: "paintpalette.fill", color: .purple)
+
+                SettingsCard {
+                    SettingsRow(title: "HUD Theme Color") {
+                        Picker("", selection: $settings.hudThemeColor) {
+                            Text("Cyan").tag("Cyan")
+                            Text("Green").tag("Green")
+                            Text("Magenta").tag("Magenta")
+                            Text("Orange").tag("Orange")
                         }
-                        .padding(12)
-                        
-                        Divider().padding(.horizontal, 12)
-                        
-                        HStack {
-                            Text("Show Skeleton Joints")
-                            Spacer()
-                            Toggle("", isOn: $settings.showHUDSkeleton)
-                                .toggleStyle(.switch)
-                                .onChange(of: settings.showHUDSkeleton) { _ in settings.saveSettings() }
-                        }
-                        .padding(12)
-                        
-                        Divider().padding(.horizontal, 12)
-                        
-                        HStack {
-                            Text("Show Gesture Status Text")
-                            Spacer()
-                            Toggle("", isOn: $settings.showHUDStatusText)
-                                .toggleStyle(.switch)
-                                .onChange(of: settings.showHUDStatusText) { _ in settings.saveSettings() }
-                        }
-                        .padding(12)
+                        .pickerStyle(.menu)
+                        .frame(width: 120)
+                        .onChange(of: settings.hudThemeColor) { _ in settings.saveSettings() }
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                    CardDivider()
+                    SettingsRow(
+                        title: "Show Skeleton Joints",
+                        subtitle: "Render circles for skeletal joints in the HUD hand overlay."
+                    ) {
+                        Toggle("", isOn: $settings.showHUDSkeleton)
+                            .toggleStyle(.switch)
+                            .onChange(of: settings.showHUDSkeleton) { _ in settings.saveSettings() }
+                    }
+                    CardDivider()
+                    SettingsRow(
+                        title: "Show Gesture Status Text",
+                        subtitle: "Display recognized gesture names at the bottom of the HUD card."
+                    ) {
+                        Toggle("", isOn: $settings.showHUDStatusText)
+                            .toggleStyle(.switch)
+                            .onChange(of: settings.showHUDStatusText) { _ in settings.saveSettings() }
+                    }
+                }
+
+                // ── HUD Dimensions ────────────────────────────────────────────────
+                SectionHeader(title: "HUD Dimensions", icon: "arrow.up.left.and.arrow.down.right", color: .blue)
+
+                SettingsCard {
+                    SliderRow(
+                        title: "HUD Window Scale",
+                        value: $settings.hudScale,
+                        range: 0.6...1.4, step: 0.1,
+                        format: { String(format: "%.1fx", $0) },
+                        onChanged: { settings.saveSettings() }
                     )
                 }
-                
-                // Section 2: HUD Scale/Dimensions
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("HUD Size")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(spacing: 0) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("HUD Window Scale")
-                                Spacer()
-                                Text(String(format: "%.1fx", settings.hudScale))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Slider(value: $settings.hudScale, in: 0.6...1.4, step: 0.1)
-                                .onChange(of: settings.hudScale) { _ in settings.saveSettings() }
-                        }
-                        .padding(12)
-                    }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
-                }
+
             }
             .padding(24)
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("HUD Appearance")
     }
 }
 
@@ -1218,6 +1160,7 @@ struct AdvancedSettingsView: View {
             .padding(24)
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("Advanced Options Settings")
         .onReceive(permissionTimer) { _ in
             isAccessibilityGranted = AccessibilityPermission.isGranted()
         }
@@ -1282,6 +1225,7 @@ struct AboutSettingsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("About SpatialGestures")
     }
 }
 

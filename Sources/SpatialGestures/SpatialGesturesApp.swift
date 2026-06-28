@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 import AVFoundation
 import ServiceManagement
+import Carbon
+import Combine
 
 
 /// App delegate to configure application presentation policy and start event monitoring on startup.
@@ -71,11 +73,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 }
 
-/// Listens for a custom hotkey globally using CGEventTap — works system-wide even when
-/// other apps are in focus, as long as Accessibility permission is granted.
+/// Listens for a custom hotkey globally using Carbon events — works system-wide
 class GlobalKeyMonitor {
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var hotKeyRef: EventHotKeyRef? = nil
+    private var eventHandler: EventHandlerRef? = nil
+    private var cancellables = Set<AnyCancellable>()
     
     // Local NSEvent monitor as a fallback for when the Settings window is active
     private var localMonitor: Any?
@@ -85,6 +87,16 @@ class GlobalKeyMonitor {
     
     init() {
         startMonitoring()
+        
+        // Re-register hotkey automatically when settings change
+        SettingsManager.shared.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self?.startMonitoring()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     deinit {
@@ -92,37 +104,55 @@ class GlobalKeyMonitor {
     }
     
     func startMonitoring() {
-        // CGEventTap: intercepts keyDown events at the HID session level — works in all apps
-        let eventMask: CGEventMask = 1 << CGEventType.keyDown.rawValue
+        stopMonitoring()
         
-        // We need a pointer to self for the C callback
+        let keyCode = UInt32(SettingsManager.shared.hotkeyKeyCode)
+        let modifiers = carbonModifiers(from: SettingsManager.shared.hotkeyModifiers)
+        
+        // EventHotKeyID signature and id
+        let hotKeyID = EventHotKeyID(signature: fourCharCode("SPG1"), id: 1)
         let selfPtr = Unmanaged.passRetained(self).toOpaque()
         
-        eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,           // Listen-only: we don't block or swallow events
-            eventsOfInterest: eventMask,
-            callback: { _, _, event, userInfo -> Unmanaged<CGEvent>? in
-                guard let userInfo = userInfo else { return Unmanaged.passRetained(event) }
-                let monitor = Unmanaged<GlobalKeyMonitor>.fromOpaque(userInfo).takeUnretainedValue()
-                monitor.handleCGEvent(event)
-                return Unmanaged.passRetained(event)
-            },
-            userInfo: selfPtr
+        // Register the global hotkey at the application target (runs system-wide without permissions)
+        let status = RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
         )
         
-        if let tap = eventTap {
-            runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-            CGEvent.tapEnable(tap: tap, enable: true)
-            print("[GlobalKeyMonitor] CGEventTap installed successfully.")
+        if status == noErr {
+            print("[GlobalKeyMonitor] Carbon HotKey registered successfully: keycode \(keyCode), mods \(modifiers)")
         } else {
-            print("[GlobalKeyMonitor] CGEventTap failed — Accessibility permission likely not granted. Falling back to NSEvent global monitor.")
-            // Fallback: NSEvent global monitor (works when Accessibility is not granted but is less reliable)
-            globalMonitorFallback = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                self?.evaluateNSEvent(event)
-            }
+            print("[GlobalKeyMonitor] Carbon HotKey registration failed with error code \(status).")
+        }
+        
+        var eventSpec = EventTypeSpec(
+            eventClass: OSType(fourCharCode("keyb")),
+            eventKind: UInt32(5) // kEventHotKeyPressed = 5
+        )
+        
+        let handlerStatus = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { (nextHandler, event, userData) -> OSStatus in
+                if let userData = userData {
+                    let monitor = Unmanaged<GlobalKeyMonitor>.fromOpaque(userData).takeUnretainedValue()
+                    monitor.onHotkeyTriggered?()
+                }
+                return noErr
+            },
+            1,
+            &eventSpec,
+            selfPtr,
+            &eventHandler
+        )
+        
+        if handlerStatus == noErr {
+            print("[GlobalKeyMonitor] Carbon EventHandler installed successfully.")
+        } else {
+            print("[GlobalKeyMonitor] Carbon EventHandler installation failed with error code \(handlerStatus).")
         }
         
         // Always add a local monitor so the hotkey works when our own Settings window is focused
@@ -132,20 +162,14 @@ class GlobalKeyMonitor {
         }
     }
     
-    private var globalMonitorFallback: Any?
-    
     func stopMonitoring() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            if let source = runLoopSource {
-                CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
-            }
-            eventTap = nil
-            runLoopSource = nil
+        if let hotKey = hotKeyRef {
+            UnregisterEventHotKey(hotKey)
+            hotKeyRef = nil
         }
-        if let monitor = globalMonitorFallback {
-            NSEvent.removeMonitor(monitor)
-            globalMonitorFallback = nil
+        if let handler = eventHandler {
+            RemoveEventHandler(handler)
+            eventHandler = nil
         }
         if let monitor = localMonitor {
             NSEvent.removeMonitor(monitor)
@@ -153,25 +177,23 @@ class GlobalKeyMonitor {
         }
     }
     
-    private func handleCGEvent(_ cgEvent: CGEvent) {
-        let keyCode = cgEvent.getIntegerValueField(.keyboardEventKeycode)
-        let flags = cgEvent.flags
-        
-        let targetKeyCode = Int64(SettingsManager.shared.hotkeyKeyCode)
-        let targetMods = SettingsManager.shared.hotkeyModifiers
-        
-        // Map NSEvent.ModifierFlags to CGEventFlags
-        var requiredFlags: CGEventFlags = []
-        if targetMods.contains(.control) { requiredFlags.insert(.maskControl) }
-        if targetMods.contains(.option)  { requiredFlags.insert(.maskAlternate) }
-        if targetMods.contains(.shift)   { requiredFlags.insert(.maskShift) }
-        if targetMods.contains(.command) { requiredFlags.insert(.maskCommand) }
-        
-        let activeFlags = flags.intersection([.maskControl, .maskAlternate, .maskShift, .maskCommand])
-        
-        if keyCode == targetKeyCode && activeFlags == requiredFlags {
-            onHotkeyTriggered?()
+    private func carbonModifiers(from modifiers: NSEvent.ModifierFlags) -> UInt32 {
+        var carbonMods: UInt32 = 0
+        if modifiers.contains(.control) { carbonMods |= UInt32(controlKey) }
+        if modifiers.contains(.option)  { carbonMods |= UInt32(optionKey) }
+        if modifiers.contains(.shift)   { carbonMods |= UInt32(shiftKey) }
+        if modifiers.contains(.command) { carbonMods |= UInt32(cmdKey) }
+        return carbonMods
+    }
+    
+    private func fourCharCode(_ string: String) -> OSType {
+        var result: OSType = 0
+        if string.utf8.count == 4 {
+            for char in string.utf8 {
+                result = (result << 8) + OSType(char)
+            }
         }
+        return result
     }
     
     private func evaluateNSEvent(_ event: NSEvent) {

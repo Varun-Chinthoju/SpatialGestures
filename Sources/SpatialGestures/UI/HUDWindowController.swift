@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 
 /// AppKit Window Controller managing the transparent, click-through HUD overlay.
 public class HUDWindowController: NSWindowController {
@@ -7,7 +8,7 @@ public class HUDWindowController: NSWindowController {
     public static let shared = HUDWindowController()
     
     private init() {
-        // Create a borderless, transparent window large enough to prevent scaling clips
+        // Create a borderless, transparent window
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 600),
             styleMask: [.borderless, .fullSizeContentView],
@@ -34,7 +35,7 @@ public class HUDWindowController: NSWindowController {
         
         super.init(window: window)
         
-        // Position window dead-center of the target screen on launch
+        // Position window on launch
         repositionToTargetScreen()
         
         // Re-center whenever monitors are plugged, unplugged, or rearranged
@@ -64,16 +65,12 @@ public class HUDWindowController: NSWindowController {
         guard let window = window else { return }
         let screen = SettingsManager.shared.targetScreen
         let screenFrame = screen.frame
-        let windowSize = window.frame.size
         
-        let x = screenFrame.origin.x + (screenFrame.size.width - windowSize.width) / 2
-        // 1/14 cushion from the bottom: bottom edge of window sits 1/14 of screen height up
+        let size = NSSize(width: 600, height: 600)
+        let x = screenFrame.origin.x + (screenFrame.size.width - size.width) / 2
         let y = screenFrame.origin.y + screenFrame.size.height / 14.0
-        
-        window.setFrameOrigin(NSPoint(x: x, y: y))
-        print("[HUD] Repositioned to '\(screen.localizedName)' at (\(Int(x)), \(Int(y)))")
+        window.setFrame(NSRect(origin: NSPoint(x: x, y: y), size: size), display: true)
     }
-
     
     /// Displays the overlay window.
     public func show() {
@@ -85,7 +82,6 @@ public class HUDWindowController: NSWindowController {
         window?.orderOut(nil)
     }
 }
-
 
 /// SwiftUI wrapper for the HUD Overlay layout.
 struct HUDWindowContentView: View {
