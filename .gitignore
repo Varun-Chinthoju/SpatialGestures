@@ -1,1 +1,16 @@
-/.DS_Store
+# macOS system files
+.DS_Store
+
+# Swift Package Manager build folder
+.build/
+
+# Package dependencies
+Packages/
+
+# Xcode configurations and build artifacts
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# Compiled application packages
+*.app/
