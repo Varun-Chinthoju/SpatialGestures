@@ -1,0 +1,55 @@
+{
+  "": {
+    "dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SpatialGestures.d",
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SpatialGestures.o",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/primary.swiftdeps"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/Models/GestureTemplate.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureTemplate.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureTemplate~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureTemplate.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureTemplate.dia"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/Services/ActionBinder.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/ActionBinder.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/ActionBinder~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/ActionBinder.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/ActionBinder.dia"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/Services/GestureClassifier.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureClassifier.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureClassifier~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureClassifier.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/GestureClassifier.dia"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/Services/HandTracker.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HandTracker.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HandTracker~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HandTracker.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HandTracker.dia"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/SpatialGesturesApp.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SpatialGesturesApp.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SpatialGesturesApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SpatialGesturesApp.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SpatialGesturesApp.dia"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/UI/HUDOverlayView.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDOverlayView.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDOverlayView~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDOverlayView.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDOverlayView.dia"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/UI/HUDWindowController.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDWindowController.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDWindowController~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDWindowController.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/HUDWindowController.dia"
+  },
+  "/Users/varun/Development/Thrum/Sources/SpatialGestures/UI/SettingsView.swift": {
+    "object": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SettingsView.swift.o",
+    "swiftmodule": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SettingsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SettingsView.swiftdeps",
+    "diagnostics": "/Users/varun/Development/Thrum/.build/arm64-apple-macosx/release/SpatialGestures.build/SettingsView.dia"
+  }
+}
