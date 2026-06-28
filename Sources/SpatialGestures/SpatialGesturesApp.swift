@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
+import AVFoundation
 import ServiceManagement
+
 
 /// App delegate to configure application presentation policy and start event monitoring on startup.
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
@@ -11,8 +13,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Ensure settings are pre-loaded once the application has launched
         _ = SettingsManager.shared
         
-        // Request Accessibility permission — required for global hotkey via CGEventTap
-        checkAndRequestAccessibility()
+        // Request both Accessibility and Camera permissions up front on first launch
+        requestPermissions()
+
         
         // Start the global hotkey listener
         let monitor = GlobalKeyMonitor()
@@ -25,15 +28,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         print("SpatialGestures global hotkey listener started.")
     }
     
-    private func checkAndRequestAccessibility() {
+    private func requestPermissions() {
+        // 1. Accessibility — required for global hotkey (CGEventTap) to work system-wide.
+        //    Passing prompt:true causes macOS to immediately show the System Settings alert.
         let options: [String: Any] = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         let trusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
         if trusted {
-            print("[Accessibility] Process is trusted — global hotkey will work system-wide.")
+            print("[Permissions] Accessibility: already granted.")
         } else {
-            print("[Accessibility] NOT trusted — global hotkey may not work outside this app. Grant Accessibility in System Settings > Privacy & Security > Accessibility.")
+            print("[Permissions] Accessibility: not granted — system prompt shown.")
+        }
+        
+        // 2. Camera — required for hand tracking via AVFoundation.
+        //    If already determined, this is a no-op. Otherwise the native dialog fires.
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                print("[Permissions] Camera: \(granted ? "granted" : "denied").")
+            }
+        case .authorized:
+            print("[Permissions] Camera: already granted.")
+        default:
+            print("[Permissions] Camera: denied or restricted.")
         }
     }
+
     
     func toggleTracking() {
         DispatchQueue.main.async { [weak self] in
