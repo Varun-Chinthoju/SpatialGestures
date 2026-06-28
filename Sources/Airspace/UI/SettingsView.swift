@@ -20,7 +20,7 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
         )
         win.minSize = NSSize(width: 820, height: 600)
         
-        win.title = "SpatialGestures Settings"
+        win.title = "Airspace Settings"
         win.isReleasedWhenClosed = false
         win.center()
         win.delegate = self
@@ -618,7 +618,7 @@ struct GeneralSettingsView: View {
                 SettingsCard {
                     SettingsRow(
                         title: "Launch at Login",
-                        subtitle: "Start SpatialGestures automatically when you turn on your Mac."
+                        subtitle: "Start Airspace automatically when you turn on your Mac."
                     ) {
                         Toggle("", isOn: $settings.launchAtLogin)
                             .toggleStyle(.switch)
@@ -1195,7 +1195,7 @@ struct AboutSettingsView: View {
             }
             
             VStack(spacing: 6) {
-                Text("SpatialGestures")
+                Text("Airspace")
                     .font(.title)
                     .bold()
                 
@@ -1225,7 +1225,7 @@ struct AboutSettingsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
-        .navigationTitle("About SpatialGestures")
+        .navigationTitle("About Airspace")
     }
 }
 

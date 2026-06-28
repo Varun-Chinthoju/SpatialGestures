@@ -1,7 +1,7 @@
 import XCTest
-@testable import SpatialGestures
+@testable import Airspace
 
-final class SpatialGesturesTests: XCTestCase {
+final class AirspaceTests: XCTestCase {
     
     /// Generates a mock hand structure of 21 joints.
     /// - Parameters:

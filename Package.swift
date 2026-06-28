@@ -2,24 +2,24 @@
 import PackageDescription
 
 let package = Package(
-    name: "SpatialGestures",
+    name: "Airspace",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "SpatialGestures", targets: ["SpatialGestures"])
+        .executable(name: "Airspace", targets: ["Airspace"])
     ],
     dependencies: [],
     targets: [
         .executableTarget(
-            name: "SpatialGestures",
+            name: "Airspace",
             dependencies: [],
-            path: "Sources/SpatialGestures"
+            path: "Sources/Airspace"
         ),
         .testTarget(
-            name: "SpatialGesturesTests",
-            dependencies: ["SpatialGestures"],
-            path: "Tests/SpatialGesturesTests"
+            name: "AirspaceTests",
+            dependencies: ["Airspace"],
+            path: "Tests/AirspaceTests"
         )
     ]
 )

@@ -27,7 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         
         self.keyMonitor = monitor
-        print("SpatialGestures global hotkey listener started.")
+        print("Airspace global hotkey listener started.")
     }
     
     private func requestPermissions() {
@@ -211,13 +211,13 @@ class GlobalKeyMonitor {
 
 
 @main
-struct SpatialGesturesApp: App {
+struct AirspaceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @ObservedObject var settings = SettingsManager.shared
     
     var body: some Scene {
         // App status item in the Menu Bar (Settings window is managed by SettingsWindowController)
-        MenuBarExtra("SpatialGestures", systemImage: "hand.wave") {
+        MenuBarExtra("Airspace", systemImage: "hand.wave") {
             Text(appDelegate.isTrackingActive ? "Tracking: Active" : "Tracking: Paused")
             
             Button(appDelegate.isTrackingActive ? "Pause Tracking" : "Start Tracking") {

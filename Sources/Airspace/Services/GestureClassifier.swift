@@ -89,6 +89,10 @@ public class GestureProcessor {
         var pinchStartCursorLocation: CGPoint? = nil
         var isDragActive = false
         
+        // Debounce frame counters to prevent transient transition triggers
+        var threeFingerFrameCount = 0
+        var twoFingerFrameCount = 0
+        
         func reset() {
             historyX.removeAll()
             historyY.removeAll()
@@ -107,6 +111,8 @@ public class GestureProcessor {
             swipeAccumulatorY = 0.0
             pinchStartCursorLocation = nil
             isDragActive = false
+            threeFingerFrameCount = 0
+            twoFingerFrameCount = 0
         }
     }
     
@@ -228,96 +234,99 @@ public class GestureProcessor {
         let threeFingersExtended = indexLen > 0.34 && middleLen > 0.34 && ringLen > 0.34 && (littleLen < ringLen - 0.05 || littleLen < 0.35)
         
         if threeFingersExtended {
-            state.lastIndexX = nil
-            state.lastIndexY = nil
+            state.threeFingerFrameCount += 1
             
-            // A. Linear Vertical Swipe Detection (swiping hand physically up or down)
-            let wrist = points[0]
-            let currentY = wrist.y
-            if let lastY = state.lastSwipeY {
-                let dy = currentY - lastY
-                state.swipeAccumulatorY += dy
+            // Only trigger and block cursor if the user holds this pose persistently (debounce ~166ms)
+            if state.threeFingerFrameCount >= 5 {
+                state.lastIndexX = nil
+                state.lastIndexY = nil
                 
-                let now = Date()
-                // Physical screen space vertical distance threshold in camera normalized coordinates
-                let translationThreshold: Float = 0.12
-                
-                if now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 {
-                    if state.swipeAccumulatorY > translationThreshold {
-                        // Hand moved UP in camera coordinates (increase in Y)
-                        print("[Trackpad] 3-finger linear UP: Mission Control")
-                        ActionBinder.triggerMissionControl()
-                        state.spaceSwitchCooldown = now
-                        state.swipeAccumulatorY = 0
-                        state.swipeAccumulator = 0
-                        DispatchQueue.main.async {
-                            HandTracker.shared.activeGestureName = "Mission Control"
-                        }
-                    } else if state.swipeAccumulatorY < -translationThreshold {
-                        // Hand moved DOWN in camera coordinates (decrease in Y)
-                        print("[Trackpad] 3-finger linear DOWN: App Exposé")
-                        ActionBinder.triggerAppExpose()
-                        state.spaceSwitchCooldown = now
-                        state.swipeAccumulatorY = 0
-                        state.swipeAccumulator = 0
-                        DispatchQueue.main.async {
-                            HandTracker.shared.activeGestureName = "App Exposé"
-                        }
-                    }
-                }
-            } else {
-                state.swipeAccumulatorY = 0
-            }
-            state.lastSwipeY = currentY
-            
-            // B. Circular Wheel Swipe Detection (Fallback rotation)
-            let indexTip = points[8]
-            let dx = indexTip.x - wrist.x
-            let dy = indexTip.y - wrist.y
-            let currentAngle = atan2(dy, dx)
-            
-            if let lastAngle = state.swipeAngle {
-                var diff = currentAngle - lastAngle
-                if diff > Float.pi  { diff -= 2.0 * Float.pi }
-                if diff < -Float.pi { diff += 2.0 * Float.pi }
-                
-                state.swipeAccumulator += diff
-                state.swipeAngle = currentAngle
-                
-                let now = Date()
-                let rotationThreshold: Float = 0.45
-                if now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 {
-                    if state.swipeAccumulator > rotationThreshold {
-                        print("[Trackpad] 3-finger circle CCW: Mission Control")
-                        ActionBinder.triggerMissionControl()
-                        state.spaceSwitchCooldown = now
-                        state.swipeAccumulator = 0
-                        state.swipeAccumulatorY = 0
-                        DispatchQueue.main.async {
-                            HandTracker.shared.activeGestureName = "Mission Control"
-                        }
-                    } else if state.swipeAccumulator < -rotationThreshold {
-                        print("[Trackpad] 3-finger circle CW: App Exposé")
-                        ActionBinder.triggerAppExpose()
-                        state.spaceSwitchCooldown = now
-                        state.swipeAccumulator = 0
-                        state.swipeAccumulatorY = 0
-                        DispatchQueue.main.async {
-                            HandTracker.shared.activeGestureName = "App Exposé"
+                // A. Linear Vertical Swipe Detection (swiping hand physically up or down)
+                let wrist = points[0]
+                let currentY = wrist.y
+                if let lastY = state.lastSwipeY {
+                    let dy = currentY - lastY
+                    state.swipeAccumulatorY += dy
+                    
+                    let now = Date()
+                    let translationThreshold: Float = 0.12
+                    
+                    if now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 {
+                        if state.swipeAccumulatorY > translationThreshold {
+                            print("[Trackpad] 3-finger linear UP: Mission Control")
+                            ActionBinder.triggerMissionControl()
+                            state.spaceSwitchCooldown = now
+                            state.swipeAccumulatorY = 0
+                            state.swipeAccumulator = 0
+                            DispatchQueue.main.async {
+                                HandTracker.shared.activeGestureName = "Mission Control"
+                            }
+                        } else if state.swipeAccumulatorY < -translationThreshold {
+                            print("[Trackpad] 3-finger linear DOWN: App Exposé")
+                            ActionBinder.triggerAppExpose()
+                            state.spaceSwitchCooldown = now
+                            state.swipeAccumulatorY = 0
+                            state.swipeAccumulator = 0
+                            DispatchQueue.main.async {
+                                HandTracker.shared.activeGestureName = "App Exposé"
+                            }
                         }
                     }
+                } else {
+                    state.swipeAccumulatorY = 0
                 }
-            } else {
-                state.swipeAngle = currentAngle
-                state.swipeAccumulator = 0
+                state.lastSwipeY = currentY
+                
+                // B. Circular Wheel Swipe Detection (Fallback rotation)
+                let indexTip = points[8]
+                let dx = indexTip.x - wrist.x
+                let dy = indexTip.y - wrist.y
+                let currentAngle = atan2(dy, dx)
+                
+                if let lastAngle = state.swipeAngle {
+                    var diff = currentAngle - lastAngle
+                    if diff > Float.pi  { diff -= 2.0 * Float.pi }
+                    if diff < -Float.pi { diff += 2.0 * Float.pi }
+                    
+                    state.swipeAccumulator += diff
+                    state.swipeAngle = currentAngle
+                    
+                    let now = Date()
+                    let rotationThreshold: Float = 0.45
+                    if now.timeIntervalSince(state.spaceSwitchCooldown) > 1.2 {
+                        if state.swipeAccumulator > rotationThreshold {
+                            print("[Trackpad] 3-finger circle CCW: Mission Control")
+                            ActionBinder.triggerMissionControl()
+                            state.spaceSwitchCooldown = now
+                            state.swipeAccumulator = 0
+                            state.swipeAccumulatorY = 0
+                            DispatchQueue.main.async {
+                                HandTracker.shared.activeGestureName = "Mission Control"
+                            }
+                        } else if state.swipeAccumulator < -rotationThreshold {
+                            print("[Trackpad] 3-finger circle CW: App Exposé")
+                            ActionBinder.triggerAppExpose()
+                            state.spaceSwitchCooldown = now
+                            state.swipeAccumulator = 0
+                            state.swipeAccumulatorY = 0
+                            DispatchQueue.main.async {
+                                HandTracker.shared.activeGestureName = "App Exposé"
+                            }
+                        }
+                    }
+                } else {
+                    state.swipeAngle = currentAngle
+                    state.swipeAccumulator = 0
+                }
+                
+                DispatchQueue.main.async {
+                    HandTracker.shared.activeGestureName = "Swipe Mode"
+                }
+                return true // Pause cursor movement while holding 3-finger pose
             }
-            
-            DispatchQueue.main.async {
-                HandTracker.shared.activeGestureName = "Swipe Mode"
-            }
-            return true // Pause cursor movement while holding 3-finger pose
         } else {
             // Reset accumulator and state when fingers leave 3-finger pose
+            state.threeFingerFrameCount = 0
             state.swipeAngle = nil
             state.swipeAccumulator = 0
             state.lastSwipeY = nil
@@ -328,40 +337,44 @@ public class GestureProcessor {
         let twoFingersScroll = indexLen > 0.35 && middleLen > 0.35 && ringLen < 0.35 && littleLen < 0.35 && !isLeftClick && !isRightClick
         
         if twoFingersScroll {
-            state.lastIndexX = nil
-            state.lastIndexY = nil
+            state.twoFingerFrameCount += 1
             
-            let wrist = points[0]
-            let indexTip = points[8]
-            let dx = indexTip.x - wrist.x
-            let dy = indexTip.y - wrist.y
-            let currentAngle = atan2(dy, dx)
-            
-            if let lastAngle = state.lastScrollAngle {
-                var diff = currentAngle - lastAngle
-                // Handle angle wrap-around crossing -pi/pi boundary
-                if diff > Float.pi { diff -= 2.0 * Float.pi }
-                if diff < -Float.pi { diff += 2.0 * Float.pi }
+            // Only trigger and block cursor if the user holds this pose persistently (debounce ~133ms)
+            if state.twoFingerFrameCount >= 4 {
+                state.lastIndexX = nil
+                state.lastIndexY = nil
                 
-                if abs(diff) > 0.03 {
-                    let sensitivity = SettingsManager.shared.scrollSensitivity
-                    // Counterclockwise (positive diff) -> scroll up. Clockwise (negative diff) -> scroll down.
-                    let scrollSpeed = Int32(diff * Float(sensitivity) * 8.0)
-                    if scrollSpeed != 0 {
-                        print("[Trackpad] Circular Scroll: speed \(scrollSpeed)")
-                        ActionBinder.simulateScroll(deltaY: scrollSpeed)
+                let wrist = points[0]
+                let indexTip = points[8]
+                let dx = indexTip.x - wrist.x
+                let dy = indexTip.y - wrist.y
+                let currentAngle = atan2(dy, dx)
+                
+                if let lastAngle = state.lastScrollAngle {
+                    var diff = currentAngle - lastAngle
+                    if diff > Float.pi { diff -= 2.0 * Float.pi }
+                    if diff < -Float.pi { diff += 2.0 * Float.pi }
+                    
+                    if abs(diff) > 0.03 {
+                        let sensitivity = SettingsManager.shared.scrollSensitivity
+                        let scrollSpeed = Int32(diff * Float(sensitivity) * 8.0)
+                        if scrollSpeed != 0 {
+                            print("[Trackpad] Circular Scroll: speed \(scrollSpeed)")
+                            ActionBinder.simulateScroll(deltaY: scrollSpeed)
+                        }
+                        state.lastScrollAngle = currentAngle
                     }
+                } else {
                     state.lastScrollAngle = currentAngle
                 }
-            } else {
-                state.lastScrollAngle = currentAngle
+                
+                DispatchQueue.main.async {
+                    HandTracker.shared.activeGestureName = "Trackpad Scroll (Pivot)"
+                }
+                return true // Pause cursor movement while scrolling
             }
-            
-            DispatchQueue.main.async {
-                HandTracker.shared.activeGestureName = "Trackpad Scroll (Pivot)"
-            }
-            return true // Pause cursor movement while scrolling
         } else {
+            state.twoFingerFrameCount = 0
             state.lastScrollAngle = nil
         }
         

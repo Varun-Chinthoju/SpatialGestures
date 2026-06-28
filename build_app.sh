@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-echo "=== 1. Compiling SpatialGestures in Release Mode ==="
+echo "=== 1. Compiling Airspace in Release Mode ==="
 swift build -c release
 
-APP_NAME="SpatialGestures.app"
+APP_NAME="Airspace.app"
 CONTENTS_DIR="$APP_NAME/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
@@ -35,7 +35,7 @@ mkdir -p "$MACOS_DIR"
 mkdir -p "$RESOURCES_DIR"
 
 echo "=== 4. Copying Binary and Icon to Bundle ==="
-cp ".build/release/SpatialGestures" "$MACOS_DIR/"
+cp ".build/release/Airspace" "$MACOS_DIR/"
 if [ -f "AppIcon.icns" ]; then
     cp "AppIcon.icns" "$RESOURCES_DIR/"
     rm -f "AppIcon.icns"
@@ -48,13 +48,13 @@ cat <<EOF > "$CONTENTS_DIR/Info.plist"
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>SpatialGestures</string>
+    <string>Airspace</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.spatialgestures.SpatialGestures</string>
+    <string>com.airspace.Airspace</string>
     <key>CFBundleName</key>
-    <string>SpatialGestures</string>
+    <string>Airspace</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -66,13 +66,13 @@ cat <<EOF > "$CONTENTS_DIR/Info.plist"
     <key>LSUIElement</key>
     <string>1</string>
     <key>NSCameraUsageDescription</key>
-    <string>SpatialGestures requires FaceTime camera access to track and translate hand gestures into system inputs.</string>
+    <string>Airspace requires FaceTime camera access to track and translate hand gestures into system inputs.</string>
 </dict>
 </plist>
 EOF
 
 echo "=== 6. Finalizing App Bundle ==="
-chmod +x "$MACOS_DIR/SpatialGestures"
+chmod +x "$MACOS_DIR/Airspace"
 
 echo "=== 7. Performing Ad-hoc Codesigning ==="
 codesign --force --deep --sign - "$APP_NAME"
