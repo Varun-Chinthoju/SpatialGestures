@@ -223,10 +223,10 @@ public class GestureProcessor {
         let d1 = thumbTipNorm.distance(to: indexTipNorm)   // Index to Thumb
         let d2 = thumbTipNorm.distance(to: middleTipNorm)  // Middle to Thumb
         
-        // Right Click: Index and Middle are BOTH pinched with the thumb
-        let isRightClick = d1 < 0.12 && d2 < 0.14
+        // Right Click: Index and Middle are BOTH pinched with the thumb, and Middle is extended (not curled)
+        let isRightClick = d1 < 0.12 && d2 < 0.14 && middleLen > 0.26
         
-        // Left Click: Index is pinched with the thumb, but Middle is NOT pinched
+        // Left Click: Index is pinched with the thumb, but Middle is NOT pinched or is curled
         let isLeftClick = d1 < 0.12 && !isRightClick
         
         // 1. Check for 3-finger circular or vertical swipe (Mission Control / App Exposé)
