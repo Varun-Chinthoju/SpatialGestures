@@ -319,6 +319,7 @@ public struct SettingsView: View {
         case customGestures
         case appearance
         case advanced
+        case updates
         case support
         case about
     }
@@ -343,6 +344,9 @@ public struct SettingsView: View {
                 NavigationLink(value: SettingsTab.advanced) {
                     Label("Advanced Options", systemImage: "slider.horizontal.3")
                 }
+                NavigationLink(value: SettingsTab.updates) {
+                    Label("Updates", systemImage: "arrow.down.circle")
+                }
                 NavigationLink(value: SettingsTab.support) {
                     Label("Support Me", systemImage: "heart")
                 }
@@ -364,6 +368,8 @@ public struct SettingsView: View {
                 AppearanceSettingsView()
             case .advanced:
                 AdvancedSettingsView()
+            case .updates:
+                UpdatesSettingsView()
             case .support:
                 SupportSettingsView()
             case .about:
@@ -1277,6 +1283,121 @@ struct SupportSettingsView: View {
         }
         .background(Color(NSColor.windowBackgroundColor))
         .navigationTitle("Support Me")
+    }
+}
+
+struct UpdatesSettingsView: View {
+    @ObservedObject var updater = UpdaterService.shared
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                SectionHeader(title: "Application Updates", icon: "arrow.down.circle.fill", color: .green)
+                
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Current Version")
+                                    .font(.headline)
+                                Text("v\(updater.currentVersion)")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if updater.updateAvailable {
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text("New Version Available")
+                                        .font(.headline)
+                                        .foregroundColor(.green)
+                                    Text("v\(updater.latestVersion)")
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                }
+                            } else {
+                                Text("Up to date")
+                                    .font(.subheadline)
+                                    .bold()
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
+                        
+                        if let error = updater.errorMessage {
+                            Text(error)
+                                .font(.callout)
+                                .foregroundColor(.red)
+                                .padding(8)
+                                .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                        
+                        Divider().padding(.vertical, 8)
+                        
+                        HStack {
+                            if updater.isChecking {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .padding(.trailing, 8)
+                                Text("Checking for updates...")
+                                    .foregroundColor(.secondary)
+                            } else if updater.isDownloading {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        ProgressView(value: updater.downloadProgress, total: 1.0)
+                                            .progressViewStyle(.linear)
+                                        Text(String(format: "%.0f%%", updater.downloadProgress * 100))
+                                            .font(.caption.bold())
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Text("Downloading update...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            } else {
+                                Button("Check for Updates") {
+                                    updater.checkForUpdates()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(updater.isChecking || updater.isDownloading)
+                                
+                                if updater.updateAvailable {
+                                    Button("Install Update") {
+                                        updater.installUpdate()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.green)
+                                    .disabled(updater.isChecking || updater.isDownloading)
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                    .padding(20)
+                }
+                
+                if updater.updateAvailable && !updater.releaseNotes.isEmpty {
+                    SectionHeader(title: "Release Notes", icon: "doc.text.fill", color: .blue)
+                    
+                    SettingsCard {
+                        ScrollView {
+                            Text(updater.releaseNotes)
+                                .font(.system(.body, design: .monospaced))
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 250)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("Updates")
+        .onAppear {
+            updater.checkForUpdates()
+        }
     }
 }
 
