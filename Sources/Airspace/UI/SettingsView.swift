@@ -1221,6 +1221,35 @@ struct AboutSettingsView: View {
                     .foregroundColor(.secondary)
             }
             
+            Divider().frame(width: 200).padding(.vertical, 10)
+            
+            // Support Card
+            VStack(spacing: 12) {
+                VStack(spacing: 6) {
+                    Text("Help get Airspace on the App Store!")
+                        .font(.headline)
+                    Text("To sign and notarize Airspace so users can install it without security warnings, a $99/year Apple Developer account is required. Any support is deeply appreciated!")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+                
+                Link(destination: URL(string: "https://venmo.com/code?user_id=4407311577646472340")!) {
+                    Label("Support on Venmo", systemImage: "heart.fill")
+                        .font(.body.bold())
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 8)
+                        .background(Color.blue, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.08), lineWidth: 1))
+            .padding(.horizontal, 40)
+            
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
