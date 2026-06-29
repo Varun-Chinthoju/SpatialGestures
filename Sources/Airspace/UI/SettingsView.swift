@@ -185,18 +185,7 @@ public class SettingsManager: ObservableObject {
             try? fileManager.createDirectory(at: appSupportURL, withIntermediateDirectories: true, attributes: nil)
         }
         
-        let newURL = appSupportURL.appendingPathComponent("settings.json")
-        
-        // Seamlessly migrate legacy settings file from Documents if it exists
-        let documentURLs = fileManager.urls(for: .documentDirectory, in: .userDomainMask)
-        let oldURL = documentURLs[0].appendingPathComponent("spatial_gestures.json")
-        
-        if fileManager.fileExists(atPath: oldURL.path) && !fileManager.fileExists(atPath: newURL.path) {
-            try? fileManager.moveItem(at: oldURL, to: newURL)
-            print("[SettingsManager] Migrated settings file from Documents to Application Support.")
-        }
-        
-        self.fileURL = newURL
+        self.fileURL = appSupportURL.appendingPathComponent("settings.json")
         loadSettings()
     }
     
