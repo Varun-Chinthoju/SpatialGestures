@@ -319,6 +319,7 @@ public struct SettingsView: View {
         case customGestures
         case appearance
         case advanced
+        case support
         case about
     }
     
@@ -342,6 +343,9 @@ public struct SettingsView: View {
                 NavigationLink(value: SettingsTab.advanced) {
                     Label("Advanced Options", systemImage: "slider.horizontal.3")
                 }
+                NavigationLink(value: SettingsTab.support) {
+                    Label("Support Me", systemImage: "heart")
+                }
                 NavigationLink(value: SettingsTab.about) {
                     Label("About", systemImage: "info.circle")
                 }
@@ -360,6 +364,8 @@ public struct SettingsView: View {
                 AppearanceSettingsView()
             case .advanced:
                 AdvancedSettingsView()
+            case .support:
+                SupportSettingsView()
             case .about:
                 AboutSettingsView()
             }
@@ -1226,9 +1232,9 @@ struct AboutSettingsView: View {
             // Support Card
             VStack(spacing: 12) {
                 VStack(spacing: 6) {
-                    Text("Help get Airspace on the App Store!")
+                    Text("Support Developer Notarization")
                         .font(.headline)
-                    Text("To sign and notarize Airspace so users can install it without security warnings, a $99/year Apple Developer account is required. Any support is deeply appreciated!")
+                    Text("To sign and notarize Airspace so anyone can install it directly without macOS security warnings, a $99/year Apple Developer account is required. Any support is deeply appreciated!")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -1255,6 +1261,51 @@ struct AboutSettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
         .navigationTitle("About Airspace")
+    }
+}
+
+struct SupportSettingsView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                SectionHeader(title: "Support Airspace Development", icon: "heart.fill", color: .pink)
+                
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Why Support?")
+                            .font(.headline)
+                        
+                        Text("To sign and notarize Airspace so anyone can install it directly without macOS security warnings, a $99/year Apple Developer account is required. Airspace is 100% free and open-source. If you find the utility helpful, any donation to help cover the licensing cost is deeply appreciated!")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(4)
+                        
+                        Divider().padding(.vertical, 8)
+                        
+                        HStack {
+                            Spacer()
+                            Link(destination: URL(string: "https://venmo.com/code?user_id=4407311577646472340")!) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "heart.fill")
+                                    Text("Support on Venmo")
+                                }
+                                .font(.body.bold())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .padding(24)
+        }
+        .background(Color(NSColor.windowBackgroundColor))
+        .navigationTitle("Support Me")
     }
 }
 
